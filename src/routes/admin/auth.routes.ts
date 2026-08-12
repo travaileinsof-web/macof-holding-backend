@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, count, desc } from "drizzle-orm";
+import { eq, count, desc, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { administrateurs, catalogues, demandes_contact, filiales, galerie, page_contents, settings } from "../../db/schema";
 import { deleteFile, uploadFile } from "../../services/upload";
@@ -193,6 +193,49 @@ adminPages.get("/:slug", async (c) => {
   return success(c, list);
 });
 
+adminPages.post("/bulk", async (c) => {
+  const body = await c.req.json();
+  const pageSlug = body?.page_slug;
+  const contents = Array.isArray(body?.contents) ? body.contents : [];
+
+  if (!pageSlug || contents.length === 0) {
+    return error(c, "Données de page invalides", 400);
+  }
+
+  const filteredContents = contents
+    .filter((item: any) => item && item.section_key && item.content_value !== undefined)
+    .map((item: any) => ({
+      page_slug: String(pageSlug),
+      section_key: String(item.section_key),
+      content_value: String(item.content_value),
+      content_type: item.content_type ? String(item.content_type) : "text",
+      updated_at: new Date(),
+    }));
+
+  if (filteredContents.length === 0) {
+    return error(c, "Aucun contenu de page valide fourni", 400);
+  }
+
+  try {
+    await db
+      .insert(page_contents)
+      .values(filteredContents)
+      .onConflictDoUpdate({
+        target: [page_contents.page_slug, page_contents.section_key],
+        set: {
+          content_value: sql`EXCLUDED.content_value`,
+          content_type: sql`EXCLUDED.content_type`,
+          updated_at: sql`CURRENT_TIMESTAMP`,
+        },
+      });
+
+    return success(c, { updated: filteredContents.length }, "Contenu de page mis à jour avec succès");
+  } catch (err) {
+    console.error("Erreur admin/pages/bulk:", err);
+    return error(c, "Impossible de sauvegarder le contenu de page", 500);
+  }
+});
+
 adminPages.put("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   const body = await c.req.json();
@@ -239,7 +282,7 @@ adminSettings.put("/:key", async (c) => {
 export const adminProfile = new Hono();
 
 adminProfile.get("/", async (c) => {
-  const userId = c.get("jwtPayload")?.id;
+  const userId = (c as any).get("jwtPayload")?.id;
   if (!userId) return error(c, "Non autorise", 401);
 
   const [user] = await db
@@ -259,7 +302,7 @@ adminProfile.get("/", async (c) => {
 });
 
 adminProfile.put("/", async (c) => {
-  const userId = c.get("jwtPayload")?.id;
+  const userId = (c as any).get("jwtPayload")?.id;
   if (!userId) return error(c, "Non autorise", 401);
 
   const body = await c.req.json();

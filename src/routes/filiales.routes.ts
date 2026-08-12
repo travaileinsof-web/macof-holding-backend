@@ -111,6 +111,19 @@ filialesRoutes.get("/public", async (c) => {
   return success(c, results);
 });
 
+// ─── GET /:slug ───────────────────────────────────────────────────────────────
+filialesRoutes.get("/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const [filiale] = await db
+    .select()
+    .from(filiales)
+    .where(eq(filiales.slug, slug))
+    .limit(1);
+
+  if (!filiale) return error(c, "Filiale non trouvée", 404);
+  return success(c, filiale);
+});
+
 // ─── GET /id/:id ─────────────────────────────────────────────────────────────
 filialesRoutes.get("/id/:id", async (c) => {
   const id = parseInt(c.req.param("id"), 10);
@@ -141,26 +154,28 @@ filialesRoutes.post("/", async (c) => {
 
   const detailsJson = parseDetailsJson(body.details);
 
+  const insertData = {
+    nom: String(body.nom),
+    slug: String(body.slug || ""),
+    secteur: String(body.secteur || ""),
+    description: String(body.description || ""),
+    details_json: detailsJson,
+    email: String(body.email || ""),
+    telephone: String(body.telephone || ""),
+    adresse: String(body.adresse || ""),
+    site_web: String(body.site_web || ""),
+    statut: (String(body.statut || "actif") as "actif" | "inactif"),
+    image_url: imageUrl || "",
+    created_at: new Date(),
+    updated_at: new Date(),
+  } as any;
+
   const [created] = await db
     .insert(filiales)
-    .values({
-      nom: String(body.nom),
-      slug: String(body.slug || ""),
-      secteur: String(body.secteur || ""),
-      description: String(body.description || ""),
-      details_json: detailsJson,
-      email: String(body.email || ""),
-      telephone: String(body.telephone || ""),
-      adresse: String(body.adresse || ""),
-      site_web: String(body.site_web || ""),
-      statut: String(body.statut || "actif"),
-      image_url: imageUrl || "",
-      created_at: new Date(),
-      updated_at: new Date(),
-    })
+    .values(insertData)
     .returning();
 
-  return success(c, created, 201);
+  return success(c, created, "Filiale créée", 201);
 });
 
 // ─── Handler réutilisable pour la mise à jour (PUT) ──────────────────────────
@@ -200,6 +215,8 @@ const updateFilialeHandler = async (c: any) => {
     await deleteImageFromStorage(existing.image_url);
   }
 
+  const statutValue = body.statut !== undefined ? (String(body.statut) as "actif" | "inactif") : existing.statut;
+
   await db
     .update(filiales)
     .set({
@@ -221,7 +238,7 @@ const updateFilialeHandler = async (c: any) => {
         body.adresse !== undefined ? String(body.adresse) : existing.adresse,
       site_web:
         body.site_web !== undefined ? String(body.site_web) : existing.site_web,
-      statut: body.statut !== undefined ? String(body.statut) : existing.statut,
+      statut: statutValue,
       image_url: imageUrl ?? existing.image_url,
       updated_at: new Date(),
     })

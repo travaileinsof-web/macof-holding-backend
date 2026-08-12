@@ -21,7 +21,7 @@ export function success(
   if (message) {
     body.message = message;
   }
-  return c.json(body, status as 200);
+  return c.json(body, status as any);
 }
 
 export function error(

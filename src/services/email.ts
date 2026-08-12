@@ -135,7 +135,7 @@ export async function sendNotificationEmail(demande: {
         .select({ value: settings.value })
         .from(settings)
         .where(eq(settings.key, "notification_email"));
-      recipient = notifEmail?.value;
+      recipient = notifEmail?.value ?? recipient;
     } catch {
       // Ignoré
     }
