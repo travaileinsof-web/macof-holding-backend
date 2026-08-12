@@ -242,7 +242,7 @@ export const settings = pgTable("settings", {
     .notNull(),
 });
 
-// ─── Drizzle ORM Relations ──────────────────────────────────────────────────
+// ─── Drizzle ORM Relations ───────────a───────────────────────────────────────
 
 export const filialesRelations = relations(filiales, ({ many }) => ({
   demandes: many(demandes_contact),

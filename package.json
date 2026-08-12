@@ -23,7 +23,7 @@
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.33",
     "jose": "^6.2.5",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^9.0.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
