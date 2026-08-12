@@ -1,12 +1,14 @@
 import { Hono } from "hono";
-import { eq, inArray, sql } from "drizzle-orm";
-import { db } from "../db/client";
-import { settings } from "../db/schema";
+import { z } from "zod";
+import { inArray } from "drizzle-orm";
+import { db } from "../db";
+import { siteSettings } from "../db/schema";
 import { success, error } from "../utils/response";
 
-const settingsRoutes = new Hono();
+export const settingsRouter = new Hono();
 
-const PUBLIC_KEYS = [
+// Liste de toutes les clés autorisées en modification
+const ALLOWED_KEYS = [
   "contact_email",
   "contact_phone",
   "contact_address",
@@ -15,79 +17,130 @@ const PUBLIC_KEYS = [
   "social_instagram",
   "social_twitter",
   "whatsapp_number",
+  "smtp_host",
+  "smtp_port",
+  "smtp_email",
+  "smtp_password",
+  "smtp_secure",
 ] as const;
 
-// Helper de lecture sécurisée du body
-async function parseBody(c: any) {
-  const contentType = c.req.header("content-type") || "";
+type SettingKey = (typeof ALLOWED_KEYS)[number];
+
+const updateSettingsSchema = z
+  .object({
+    settings: z
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+      .optional(),
+  })
+  .catchall(z.union([z.string(), z.number(), z.boolean()]));
+
+// --- GET /api/v1/settings ---
+settingsRouter.get("/", async (c) => {
   try {
-    if (
-      contentType.includes("multipart/form-data") ||
-      contentType.includes("application/x-www-form-urlencoded")
-    ) {
-      return await c.req.parseBody();
-    }
-    return await c.req.json();
-  } catch {
-    return null;
-  }
-}
+    const settingsList = await db
+      .select({
+        key: siteSettings.key,
+        value: siteSettings.value,
+      })
+      .from(siteSettings);
 
-// GET /api/v1/settings
-settingsRoutes.get("/", async (c) => {
-  // 1. Filtrage directement au niveau SQL
-  const publicSettings = await db
-    .select()
-    .from(settings)
-    .where(inArray(settings.key, [...PUBLIC_KEYS]));
-
-  const map = publicSettings.reduce(
-    (acc, curr) => {
-      acc[curr.key] = curr.value || "";
+    const map = settingsList.reduce<Record<string, string>>((acc, curr) => {
+      acc[curr.key] = curr.value ?? "";
       return acc;
-    },
-    {} as Record<string, string>,
-  );
+    }, {});
 
-  return success(c, { map });
+    return success(c, { map });
+  } catch (err) {
+    return error(c, "Impossible de récupérer les paramètres", 500);
+  }
 });
 
-// PUT /api/v1/settings
-settingsRoutes.put("/", async (c) => {
-  const body = await parseBody(c);
+// --- POST/PUT /api/v1/settings/bulk ---
+const handleBulkUpdate = async (c: any) => {
+  try {
+    const rawBody = await c.req.json();
+    const parsed = updateSettingsSchema.parse(rawBody);
 
-  if (!body || typeof body !== "object") {
-    return error(c, "Corps de requête invalide", 400);
-  }
+    // Récupération des données que `settings` soit imbriqué ou à la racine
+    const settingsData = parsed.settings ?? parsed;
 
-  const keysToUpdate = Object.keys(body).filter((k) =>
-    PUBLIC_KEYS.includes(k as any),
-  );
+    const entriesToUpdate = Object.entries(settingsData).filter(([key]) =>
+      ALLOWED_KEYS.includes(key as SettingKey),
+    );
 
-  if (keysToUpdate.length === 0) {
-    return error(c, "Aucune clé valide à mettre à jour", 400);
-  }
+    if (entriesToUpdate.length === 0) {
+      return error(c, "Aucune clé valide fournie pour la mise à jour", 400);
+    }
 
-  // 2. Préparation du tableau d'upsert
-  const valuesToInsert = keysToUpdate.map((key) => ({
-    key,
-    value: String(body[key] ?? ""),
-    updated_at: new Date(),
-  }));
-
-  // 3. Upsert en 1 seule requête SQL (suppose que 'key' a une contrainte UNIQUE ou est clé primaire)
-  await db
-    .insert(settings)
-    .values(valuesToInsert)
-    .onConflictDoUpdate({
-      target: settings.key,
-      set: {
-        value: sql`EXCLUDED.value`,
-        updated_at: new Date(),
-      },
+    // Upsert en base de données
+    const updatePromises = entriesToUpdate.map(([key, value]) => {
+      const stringValue = String(value);
+      return db
+        .insert(siteSettings)
+        .values({
+          key,
+          value: stringValue,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: siteSettings.key,
+          set: {
+            value: stringValue,
+            updatedAt: new Date(),
+          },
+        });
     });
 
-  return success(c, { message: "Settings updated successfully" });
-});
+    await Promise.all(updatePromises);
 
-export default settingsRoutes;
+    return success(
+      c,
+      { updatedKeys: entriesToUpdate.map(([k]) => k) },
+      "Paramètres mis à jour avec succès",
+    );
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return error(c, "Données invalides", 400, err.errors);
+    }
+    return error(c, "Erreur lors de la mise à jour des paramètres", 500);
+  }
+};
+
+settingsRouter.post("/bulk", handleBulkUpdate);
+settingsRouter.put("/bulk", handleBulkUpdate);
+
+// --- POST /api/v1/settings/test-email ---
+settingsRouter.post("/test-email", async (c) => {
+  try {
+    const { email } = await c.req.json();
+
+    if (!email) {
+      return error(c, "L'adresse email de destination est requise", 400);
+    }
+
+    const dbSettings = await db
+      .select()
+      .from(siteSettings)
+      .where(
+        inArray(siteSettings.key, [
+          "smtp_host",
+          "smtp_port",
+          "smtp_email",
+          "smtp_password",
+        ]),
+      );
+
+    const config = dbSettings.reduce<Record<string, string>>((acc, curr) => {
+      acc[curr.key] = curr.value;
+      return acc;
+    }, {});
+
+    if (!config.smtp_host || !config.smtp_email) {
+      return error(c, "La configuration SMTP est incomplète", 400);
+    }
+
+    return success(c, null, `E-mail de test envoyé à ${email}`);
+  } catch (err) {
+    return error(c, "Échec lors de l'envoi de l'e-mail de test", 500);
+  }
+});
