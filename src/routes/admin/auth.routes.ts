@@ -643,39 +643,77 @@ adminCatalogues.post("/", authMiddleware, async (c) => {
 
 adminCatalogues.put("/:id", authMiddleware, async (c) => {
   const id = getIdParam(c);
-  const body = await c.req.json();
-  const parsed = catalogueSchema.safeParse(body);
 
-  if (!parsed.success) {
-    return error(c, getValidationError(parsed.error), 422);
+  const [existing] = await db
+    .select()
+    .from(catalogues)
+    .where(eq(catalogues.id, id))
+    .limit(1);
+
+  if (!existing) {
+    return error(c, "Catalogue non trouve", 404);
   }
 
-  const data = parsed.data;
-  let filialeId: number | null = null;
-  if (data.filiale) {
-    const fv = data.filiale;
-    if (typeof fv === "number") filialeId = fv;
-    else if (/^\d+$/.test(String(fv))) filialeId = parseInt(String(fv), 10);
+  const contentType = c.req.header("content-type") || "";
+  let titre: string;
+  let filialeRaw: string | undefined;
+  let type_document: string;
+  let newFile: File | undefined;
+
+  if (contentType.includes("multipart/form-data")) {
+    const body = await c.req.parseBody();
+    titre = (body["titre"] as string) || existing.titre;
+    filialeRaw = body["filiale"] as string | undefined;
+    type_document = (body["type_document"] as string) || existing.type_document;
+    if (body["file"] instanceof File && (body["file"] as File).size > 0) {
+      newFile = body["file"] as File;
+    }
+  } else {
+    const body = await c.req.json();
+    titre = body.titre || existing.titre;
+    filialeRaw = body.filiale;
+    type_document = body.type_document || existing.type_document;
+  }
+
+  let filialeId: number | null = existing.filiale;
+  if (filialeRaw !== undefined) {
+    if (filialeRaw === "") {
+      filialeId = null;
+    } else if (/^\d+$/.test(String(filialeRaw))) {
+      filialeId = parseInt(String(filialeRaw), 10);
+    }
+  }
+
+  let file_path = existing.file_path;
+  let taille_ko = existing.taille_ko;
+  let format = existing.format;
+
+  if (newFile) {
+    file_path = await uploadFile(newFile, "catalogues");
+    taille_ko = Math.round(newFile.size / 1024);
+    format = "PDF";
+    if (newFile.type.includes("image")) format = "IMAGE";
+    if (newFile.type.includes("word")) format = "WORD";
+    if (existing.file_path) {
+      deleteFile(existing.file_path).catch(() => {});
+    }
   }
 
   const [updated] = await db
     .update(catalogues)
     .set({
-      titre: data.titre,
+      titre,
       filiale: filialeId,
-      type_document: data.type_document,
-      file_path: data.file_path,
-      taille_ko: data.taille_ko || null,
-      format: data.format,
+      type_document: type_document as any,
+      file_path,
+      taille_ko,
+      format,
       updated_at: new Date(),
     })
     .where(eq(catalogues.id, id))
     .returning();
 
-  if (!updated) {
-    return error(c, "Catalogue non trouve", 404);
-  }
-
+  eventEmitter.emit("invalidate", { entity: "catalogues" });
   return success(c, updated, "Catalogue mis a jour");
 });
 
