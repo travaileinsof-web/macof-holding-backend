@@ -1,20 +1,22 @@
-import type { Context, Next } from 'hono';
-import { cors } from 'hono/cors';
+import type { Context, Next } from "hono";
+import { cors } from "hono/cors";
 
 const ALLOWED_ORIGINS: string[] = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:4173',
-  'https://macof-holding.com',
-  'https://www.macof-holding.com',
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://localhost:4173",
+  "https://macof-holding.com",
+  "https://www.macof-holding.com",
+  "https://macof-holding-frontend.vercel.app",
+  "https://macof-holding-frontend-git-main-travaileinsof-1730s-projects.vercel.app",
 ];
 
 export const corsMiddleware = () => {
   return cors({
     origin: (origin: string | undefined, c: Context) => {
-      if (!origin) return '*';
+      if (!origin) return "*";
 
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") {
         return origin;
       }
 
@@ -24,9 +26,9 @@ export const corsMiddleware = () => {
 
       return ALLOWED_ORIGINS[0];
     },
-    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    exposeHeaders: ['Content-Length', 'X-Request-Id'],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    exposeHeaders: ["Content-Length", "X-Request-Id"],
     maxAge: 86400,
     credentials: true,
   });
