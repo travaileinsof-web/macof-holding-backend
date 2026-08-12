@@ -11,7 +11,7 @@ import cataloguesRoutes from './routes/catalogues.routes';
 import pagesRoutes from './routes/pages.routes';
 import settingsRoutes from './routes/settings.routes';
 import { eventsRoutes } from './routes/events.routes';
-import { adminRoutes } from './routes/admin/auth.routes';
+import adminRoutes from './routes/admin/auth.routes';
 
 const app = new Hono();
 
