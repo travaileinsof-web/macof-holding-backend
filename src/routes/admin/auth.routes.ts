@@ -190,7 +190,18 @@ adminPages.get("/:slug", async (c) => {
     .from(page_contents)
     .where(eq(page_contents.page_slug, slug));
 
-  return success(c, list);
+  // Retourner la même structure que l'endpoint public `/api/v1/pages/:slug`
+  const sections = list.map((row: any) => ({
+    key: row.section_key,
+    type: row.content_type || "text",
+    value: row.content_value || "",
+    image_url: row.content_type === "image" ? row.content_value : undefined,
+  }));
+
+  return success(c, {
+    slug,
+    sections,
+  });
 });
 
 adminPages.post("/bulk", async (c) => {
@@ -353,6 +364,7 @@ adminUpload.post("/", async (c) => {
 export const adminRoutes = new Hono();
 
 adminRoutes.route("/dashboard/stats", adminDashboard);
+adminRoutes.route("/stats", adminDashboard);
 adminRoutes.route("/demandes", adminDemandes);
 adminRoutes.route("/filiales", adminFiliales);
 adminRoutes.route("/galerie", adminGalerie);
