@@ -575,4 +575,101 @@ restaurationRoutes.get("/commandes/:reference/statut", async (c) => {
   }
 });
 
+/**
+ * 🪝 Webhook Route: Receives asynchronous payment notifications from Djomy
+ * POST /restauration/djomy-webhook
+ * Validates signature and updates order payment status
+ */
+restaurationRoutes.post("/djomy-webhook", async (c) => {
+  try {
+    // Extract the request body (raw JSON)
+    const rawBody = await c.req.text();
+    const body = JSON.parse(rawBody);
+
+    // Extract signature from headers
+    const signatureHeader = c.req.header("X-Djomy-Signature");
+    if (!signatureHeader) {
+      console.warn("Djomy webhook: Missing X-Djomy-Signature header");
+      return error(c, "Missing signature", 400);
+    }
+
+    // Validate signature
+    const clientSecret = process.env.DJOMY_CLIENT_SECRET;
+    if (!clientSecret) {
+      console.error("Djomy webhook: DJOMY_CLIENT_SECRET not configured");
+      return error(c, "Server configuration error", 500);
+    }
+
+    const expectedSignature = createHmac("sha256", clientSecret)
+      .update(rawBody)
+      .digest("hex");
+
+    if (signatureHeader !== expectedSignature) {
+      console.warn(
+        `Djomy webhook: Invalid signature. Expected ${expectedSignature}, got ${signatureHeader}`,
+      );
+      return error(c, "Invalid signature", 401);
+    }
+
+    // Extract webhook data
+    const { transactionId, status, merchantPaymentReference } = body;
+
+    if (!transactionId || !status || !merchantPaymentReference) {
+      console.warn(
+        "Djomy webhook: Missing required fields",
+        body,
+      );
+      return error(c, "Missing required fields", 400);
+    }
+
+    // Map Djomy status to our status
+    let nouveauStatutPaiement: Commande["statut_paiement"] = "en_attente";
+    if (status === "SUCCESS" || status === "COMPLETED") {
+      nouveauStatutPaiement = "paye";
+    } else if (status === "FAILED") {
+      nouveauStatutPaiement = "echec";
+    } else if (status === "CANCELLED") {
+      nouveauStatutPaiement = "echec";
+    }
+
+    // Update order in database
+    const [order] = await db
+      .select()
+      .from(commandes)
+      .where(eq(commandes.reference, merchantPaymentReference))
+      .limit(1);
+
+    if (!order) {
+      console.warn(
+        `Djomy webhook: Order not found for reference ${merchantPaymentReference}`,
+      );
+      // Return 200 to acknowledge receipt (idempotency)
+      return success(c, { acknowledged: true });
+    }
+
+    // Only update if status changed
+    if (nouveauStatutPaiement !== order.statut_paiement) {
+      await db
+        .update(commandes)
+        .set({
+          statut_paiement: nouveauStatutPaiement,
+          statut: nouveauStatutPaiement === "paye" ? "confirmee" : order.statut,
+          updated_at: new Date(),
+        })
+        .where(eq(commandes.id, order.id));
+
+      console.log(
+        `✅ Djomy webhook: Order ${merchantPaymentReference} updated to ${nouveauStatutPaiement}`,
+      );
+    }
+
+    // Always return 200 OK to acknowledge receipt
+    return success(c, { acknowledged: true });
+  } catch (err: any) {
+    console.error("Djomy webhook error:", err);
+    // Always return 200 to prevent Djomy from retrying
+    return success(c, { acknowledged: true });
+  }
+});
+
 export default restaurationRoutes;
