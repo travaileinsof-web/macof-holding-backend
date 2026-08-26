@@ -1,4 +1,6 @@
+import dotenv from 'dotenv/config';
 import axios from 'axios';
+
 import { db } from './src/db/client';
 import { administrateurs } from './src/db/schema';
 import { eq } from 'drizzle-orm';

@@ -1,3 +1,5 @@
+
+import dotenv from 'dotenv/config';
 import nodemailer from "nodemailer";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../db/client";

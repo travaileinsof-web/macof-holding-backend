@@ -1,3 +1,5 @@
+import dotenv from 'dotenv/config';
+
 import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
 

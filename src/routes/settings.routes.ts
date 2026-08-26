@@ -16,6 +16,8 @@ export const PUBLIC_KEYS = [
   "social_instagram",
   "social_twitter",
   "whatsapp_number",
+  "restauration_frais_livraison_gnf",
+  "restauration_acompte_pourcent",
 ] as const;
 
 type PublicKey = (typeof PUBLIC_KEYS)[number];
@@ -84,6 +86,8 @@ settingsRoutes.post("/bulk", async (c) => {
     "smtp_password",
     "smtp_secure",
     "notification_email",
+    "restauration_frais_livraison_gnf",
+    "restauration_acompte_pourcent",
   ];
 
   const valuesToInsert = Object.keys(settingsData)

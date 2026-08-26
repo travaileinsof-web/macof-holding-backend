@@ -60,6 +60,31 @@ export const statutResolutionEnum = pgEnum("statut_resolution", [
 
 export const civiliteEnum = pgEnum("civilite", ["monsieur", "madame"]);
 
+export const produitCategorieEnum = pgEnum("produit_categorie", [
+  "boulangerie",
+  "plats",
+  "boissons",
+]);
+
+export const statutCommandeEnum = pgEnum("statut_commande", [
+  "en_attente",
+  "confirmee",
+  "en_preparation",
+  "en_livraison",
+  "livree",
+  "annulee",
+]);
+
+export const statutPaiementEnum = pgEnum("statut_paiement", [
+  "a_payer",
+  "en_attente",
+  "partiel",
+  "paye",
+  "echec",
+]);
+
+export const modePaiementEnum = pgEnum("mode_paiement", ["livraison", "djomy"]);
+
 // ─── Filiales ────────────────────────────────────────────────────────────────
 
 export const filiales = pgTable("filiales", {
@@ -231,15 +256,89 @@ export const page_contents = pgTable(
   ],
 );
 
+// ─── Menu et commandes SEBA ─────────────────────────────────────────────────
+
+export const produits_menu = pgTable(
+  "produits_menu",
+  {
+    id: serial("id").primaryKey(),
+    nom: varchar("nom", { length: 255 }).notNull(),
+    description: text("description"),
+    categorie: produitCategorieEnum("categorie").notNull(),
+    prix_gnf: integer("prix_gnf").notNull(),
+    image_url: text("image_url"),
+    disponible: boolean("disponible").default(true).notNull(),
+    archived: boolean("archived").default(false).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (self) => [index("idx_produits_menu_categorie").on(self.categorie)],
+);
+
+export const commandes = pgTable(
+  "commandes",
+  {
+    id: serial("id").primaryKey(),
+    reference: varchar("reference", { length: 50 }).notNull().unique(),
+    nom_client: varchar("nom_client", { length: 255 }).notNull(),
+    telephone: varchar("telephone", { length: 50 }).notNull(),
+    email: varchar("email", { length: 255 }),
+    adresse_livraison: text("adresse_livraison").notNull(),
+    quartier: varchar("quartier", { length: 255 }).notNull(),
+    ville: varchar("ville", { length: 255 }).notNull(),
+    frais_livraison_gnf: integer("frais_livraison_gnf").notNull(),
+    total_gnf: integer("total_gnf").notNull(),
+    acompte_pourcent: integer("acompte_pourcent").notNull(),
+    acompte_gnf: integer("acompte_gnf").notNull(),
+    reste_gnf: integer("reste_gnf").notNull(),
+    mode_paiement: modePaiementEnum("mode_paiement").notNull(),
+    statut: statutCommandeEnum("statut").default("en_attente").notNull(),
+    statut_paiement: statutPaiementEnum("statut_paiement")
+      .default("a_payer")
+      .notNull(),
+    djomy_transaction_id: varchar("djomy_transaction_id", { length: 255 }),
+    notes: text("notes"),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (self) => [
+    index("idx_commandes_statut").on(self.statut),
+    index("idx_commandes_created").on(self.created_at),
+  ],
+);
+
+export const lignes_commandes = pgTable(
+  "lignes_commandes",
+  {
+    id: serial("id").primaryKey(),
+    commande_id: integer("commande_id")
+      .notNull()
+      .references(() => commandes.id, { onDelete: "cascade" }),
+    produit_id: integer("produit_id").references(() => produits_menu.id),
+    nom_produit: varchar("nom_produit", { length: 255 }).notNull(),
+    prix_unitaire_gnf: integer("prix_unitaire_gnf").notNull(),
+    quantite: integer("quantite").notNull(),
+    total_gnf: integer("total_gnf").notNull(),
+  },
+  (self) => [index("idx_lignes_commandes_commande").on(self.commande_id)],
+);
+
 // ─── Settings ───────────────────────────────────────────────────────────────
 
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
   key: varchar("key", { length: 255 }).notNull().unique(),
   value: text("value"),
-  updated_at: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
+  // Removing .notNull() prevents full engine read crashes if a legacy record has no timestamp
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
 // ─── Drizzle ORM Relations ───────────a───────────────────────────────────────
@@ -298,9 +397,15 @@ export type Catalogue = typeof catalogues.$inferSelect;
 export type NewCatalogue = typeof catalogues.$inferInsert;
 export type GalerieItem = typeof galerie.$inferSelect;
 export type NewGalerieItem = typeof galerie.$inferInsert;
+export type NewLigneCommande = typeof lignes_commandes.$inferInsert;
 export type ChatbotLog = typeof chatbot_logs.$inferSelect;
 export type NewChatbotLog = typeof chatbot_logs.$inferInsert;
 export type PageContent = typeof page_contents.$inferSelect;
 export type NewPageContent = typeof page_contents.$inferInsert;
 export type Setting = typeof settings.$inferSelect;
 export type NewSetting = typeof settings.$inferInsert;
+export type ProduitMenu = typeof produits_menu.$inferSelect;
+export type NewProduitMenu = typeof produits_menu.$inferInsert;
+export type Commande = typeof commandes.$inferSelect;
+export type NewCommande = typeof commandes.$inferInsert;
+export type LigneCommande = typeof lignes_commandes.$inferSelect;

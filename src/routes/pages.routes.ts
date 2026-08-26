@@ -1,10 +1,10 @@
+import "dotenv/config";
 import { Hono } from "hono";
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/client";
 import { page_contents } from "../db/schema";
 import { success, error } from "../utils/response";
 import { uploadFile } from "../services/upload";
-
 const pagesRoutes = new Hono();
 
 const ALLOWED_IMAGE_TYPES = [

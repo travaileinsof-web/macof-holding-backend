@@ -5,10 +5,11 @@
   "main": "src/index.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "npx tsx src/index.ts",
+    "dev": "npx tsx --dns-result-order=ipv4first src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:seed": "npx tsx src/db/seed.ts"
+    "db:seed": "npx tsx src/db/seed.ts",
+    "db:seed-menu": "npx tsx src/db/seed-menu.ts"
   },
   "keywords": [],
   "author": "MACOF Holding",
