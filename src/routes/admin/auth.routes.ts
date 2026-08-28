@@ -3,6 +3,8 @@ import { eq, count, desc, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { administrateurs, catalogues, demandes_contact, filiales, galerie, page_contents, settings } from "../../db/schema";
 import { deleteFile, uploadFile } from "../../services/upload";
+import { authMiddleware } from "../../middleware/auth";
+import { eventEmitter } from "../../services/events";
 
 
 // Helpers pour les reponses standardisees
@@ -75,6 +77,7 @@ adminFiliales.get("/", async (c) => {
 adminFiliales.post("/", async (c) => {
   const body = await c.req.json();
   const created = await db.insert(filiales).values(body).returning();
+  eventEmitter.emit("invalidate", { entity: "filiales" });
   return success(c, created[0], "Filiale creee", 201);
 });
 
@@ -92,12 +95,14 @@ adminFiliales.put("/:id", async (c) => {
     .returning();
 
   if (!updated.length) return error(c, "Filiale introuvable", 404);
+  eventEmitter.emit("invalidate", { entity: "filiales" });
   return success(c, updated[0], "Filiale mise a jour");
 });
 
 adminFiliales.delete("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   await db.delete(filiales).where(eq(filiales.id, id));
+  eventEmitter.emit("invalidate", { entity: "filiales" });
   return success(c, null, "Filiale supprimee");
 });
 
@@ -110,8 +115,24 @@ adminGalerie.get("/", async (c) => {
 });
 
 adminGalerie.post("/", async (c) => {
-  const body = await c.req.json();
+  const contentType = c.req.header("content-type") || "";
+  let body: any;
+  let image: File | undefined;
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.parseBody();
+    body = Object.fromEntries(Object.entries(form).filter(([key]) => key !== "image"));
+    image = form.image instanceof File ? form.image : undefined;
+    if (image) body.image_path = await uploadFile(image, "galerie");
+  } else {
+    body = await c.req.json();
+  }
+
+  if (!body.image_path) return error(c, "Une image est requise", 400);
+  if (body.filiale !== undefined && body.filiale !== "") body.filiale = Number(body.filiale);
+  else delete body.filiale;
   const item = await db.insert(galerie).values(body).returning();
+  eventEmitter.emit("invalidate", { entity: "galerie" });
   return success(c, item[0], "Image ajoutee", 201);
 });
 
@@ -125,6 +146,7 @@ adminGalerie.delete("/:id", async (c) => {
   }
 
   await db.delete(galerie).where(eq(galerie.id, id));
+  eventEmitter.emit("invalidate", { entity: "galerie" });
   return success(c, null, "Element supprime de la galerie");
 });
 
@@ -137,14 +159,46 @@ adminCatalogues.get("/", async (c) => {
 });
 
 adminCatalogues.post("/", async (c) => {
-  const body = await c.req.json();
+  const contentType = c.req.header("content-type") || "";
+  let body: any;
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.parseBody();
+    const file = form.file instanceof File ? form.file : undefined;
+    body = Object.fromEntries(Object.entries(form).filter(([key]) => key !== "file"));
+    if (file) {
+      body.file_path = await uploadFile(file, "catalogues");
+      body.format = file.name.split(".").pop()?.toLowerCase() || "pdf";
+      body.taille_ko = Math.max(1, Math.ceil(file.size / 1024));
+    }
+  } else {
+    body = await c.req.json();
+  }
+  if (!body.file_path) return error(c, "Un fichier est requis", 400);
+  if (body.filiale !== undefined && body.filiale !== "") body.filiale = Number(body.filiale);
+  else delete body.filiale;
   const created = await db.insert(catalogues).values(body).returning();
+  eventEmitter.emit("invalidate", { entity: "catalogues" });
   return success(c, created[0], "Catalogue cree", 201);
 });
 
 adminCatalogues.put("/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  const body = await c.req.json();
+  const contentType = c.req.header("content-type") || "";
+  let body: any;
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.parseBody();
+    const file = form.file instanceof File ? form.file : undefined;
+    body = Object.fromEntries(Object.entries(form).filter(([key]) => key !== "file"));
+    if (file) {
+      body.file_path = await uploadFile(file, "catalogues");
+      body.format = file.name.split(".").pop()?.toLowerCase() || "pdf";
+      body.taille_ko = Math.max(1, Math.ceil(file.size / 1024));
+    }
+  } else {
+    body = await c.req.json();
+  }
+  if (body.filiale !== undefined && body.filiale !== "") body.filiale = Number(body.filiale);
+  else delete body.filiale;
 
   const updated = await db
     .update(catalogues)
@@ -156,6 +210,7 @@ adminCatalogues.put("/:id", async (c) => {
     .returning();
 
   if (!updated.length) return error(c, "Catalogue introuvable", 404);
+  eventEmitter.emit("invalidate", { entity: "catalogues" });
   return success(c, updated[0], "Catalogue mis a jour");
 });
 
@@ -172,6 +227,7 @@ adminCatalogues.delete("/:id", async (c) => {
   }
 
   await db.delete(catalogues).where(eq(catalogues.id, id));
+  eventEmitter.emit("invalidate", { entity: "catalogues" });
   return success(c, null, "Catalogue supprime");
 });
 
@@ -240,6 +296,7 @@ adminPages.post("/bulk", async (c) => {
         },
       });
 
+    eventEmitter.emit("invalidate", { entity: "pages" });
     return success(c, { updated: filteredContents.length }, "Contenu de page mis à jour avec succès");
   } catch (err) {
     console.error("Erreur admin/pages/bulk:", err);
@@ -261,6 +318,7 @@ adminPages.put("/:id", async (c) => {
     .returning();
 
   if (!updated.length) return error(c, "Section introuvable", 404);
+  eventEmitter.emit("invalidate", { entity: "pages" });
   return success(c, updated[0], "Contenu de page mis a jour");
 });
 
@@ -286,6 +344,7 @@ adminSettings.put("/:key", async (c) => {
     .returning();
 
   if (!updated.length) return error(c, "Parametre introuvable", 404);
+  eventEmitter.emit("invalidate", { entity: "settings" });
   return success(c, updated[0], "Parametre mis a jour");
 });
 
@@ -362,6 +421,7 @@ adminUpload.post("/", async (c) => {
 
 // ─── 10. Router Principal Administration ────────────────────────────────────
 export const adminRoutes = new Hono();
+adminRoutes.use("*", authMiddleware);
 
 adminRoutes.route("/dashboard/stats", adminDashboard);
 adminRoutes.route("/stats", adminDashboard);

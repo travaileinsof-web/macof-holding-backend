@@ -14,9 +14,81 @@ import {
 
 type NewLigneCommande = Omit<LigneCommande, "id">;
 import { success, error } from "../utils/response";
+import { authMiddleware } from "../middleware/auth";
+import { uploadFile } from "../services/upload";
+import { eventEmitter } from "../services/events";
 
 const restaurationRoutes = new Hono();
 export const adminRestaurationRoutes = new Hono();
+adminRestaurationRoutes.use("*", authMiddleware);
+
+adminRestaurationRoutes.get("/menu", async (c) => {
+  const products = await db.select().from(produits_menu).orderBy(desc(produits_menu.created_at));
+  return success(c, products);
+});
+
+async function parseMenuBody(c: any) {
+  const contentType = c.req.header("content-type") || "";
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.parseBody();
+    const body: any = Object.fromEntries(Object.entries(form).filter(([key]) => key !== "image"));
+    const image = form.image instanceof File ? form.image : undefined;
+    if (image) body.image_url = await uploadFile(image, "restauration");
+    return body;
+  }
+  return await c.req.json();
+}
+
+function normalizeMenuBody(body: any) {
+  const normalized: any = {
+    nom: String(body.nom || "").trim(),
+    description: body.description ? String(body.description) : null,
+    categorie: body.categorie,
+    prix_gnf: Number(body.prix_gnf),
+    disponible: body.disponible === true || body.disponible === "true",
+    updated_at: new Date(),
+  };
+  if (body.image_url) normalized.image_url = String(body.image_url);
+  return normalized;
+}
+
+adminRestaurationRoutes.post("/menu", async (c) => {
+  const body = normalizeMenuBody(await parseMenuBody(c));
+  if (!body.nom || !Number.isFinite(body.prix_gnf) || !body.categorie) return error(c, "Données de produit invalides", 400);
+  const [product] = await db.insert(produits_menu).values(body).returning();
+  eventEmitter.emit("invalidate", { entity: "restauration" });
+  return success(c, product, "Produit ajouté", 201);
+});
+
+adminRestaurationRoutes.put("/menu/:id", async (c) => {
+  const body = normalizeMenuBody(await parseMenuBody(c));
+  const [product] = await db.update(produits_menu).set(body).where(eq(produits_menu.id, Number(c.req.param("id")))).returning();
+  if (product) eventEmitter.emit("invalidate", { entity: "restauration" });
+  return product ? success(c, product, "Produit mis à jour") : error(c, "Produit introuvable", 404);
+});
+
+adminRestaurationRoutes.delete("/menu/:id", async (c) => {
+  const [product] = await db.update(produits_menu).set({ archived: true, updated_at: new Date() }).where(eq(produits_menu.id, Number(c.req.param("id")))).returning();
+  if (product) eventEmitter.emit("invalidate", { entity: "restauration" });
+  return product ? success(c, product, "Produit supprimé") : error(c, "Produit introuvable", 404);
+});
+
+adminRestaurationRoutes.get("/commandes", async (c) => {
+  const orders = await db.select().from(commandes).orderBy(desc(commandes.created_at));
+  return success(c, orders);
+});
+
+adminRestaurationRoutes.put("/commandes/:id/statut", async (c) => {
+  const { statut } = await c.req.json();
+  const [order] = await db.update(commandes).set({ statut, updated_at: new Date() }).where(eq(commandes.id, Number(c.req.param("id")))).returning();
+  return order ? success(c, order, "Statut mis à jour") : error(c, "Commande introuvable", 404);
+});
+
+adminRestaurationRoutes.put("/commandes/:id/paiement", async (c) => {
+  const { statut_paiement } = await c.req.json();
+  const [order] = await db.update(commandes).set({ statut_paiement, updated_at: new Date() }).where(eq(commandes.id, Number(c.req.param("id")))).returning();
+  return order ? success(c, order, "Paiement mis à jour") : error(c, "Commande introuvable", 404);
+});
 
 // ─── Types Djomy ─────────────────────────────────────────────────────────────
 
