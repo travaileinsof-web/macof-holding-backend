@@ -23,7 +23,10 @@ export const adminRestaurationRoutes = new Hono();
 adminRestaurationRoutes.use("*", authMiddleware);
 
 adminRestaurationRoutes.get("/menu", async (c) => {
-  const products = await db.select().from(produits_menu).orderBy(desc(produits_menu.created_at));
+  const products = await db
+    .select()
+    .from(produits_menu)
+    .orderBy(desc(produits_menu.created_at));
   return success(c, products);
 });
 
@@ -31,7 +34,9 @@ async function parseMenuBody(c: any) {
   const contentType = c.req.header("content-type") || "";
   if (contentType.includes("multipart/form-data")) {
     const form = await c.req.parseBody();
-    const body: any = Object.fromEntries(Object.entries(form).filter(([key]) => key !== "image"));
+    const body: any = Object.fromEntries(
+      Object.entries(form).filter(([key]) => key !== "image"),
+    );
     const image = form.image instanceof File ? form.image : undefined;
     if (image) body.image_url = await uploadFile(image, "restauration");
     return body;
@@ -54,7 +59,8 @@ function normalizeMenuBody(body: any) {
 
 adminRestaurationRoutes.post("/menu", async (c) => {
   const body = normalizeMenuBody(await parseMenuBody(c));
-  if (!body.nom || !Number.isFinite(body.prix_gnf) || !body.categorie) return error(c, "Données de produit invalides", 400);
+  if (!body.nom || !Number.isFinite(body.prix_gnf) || !body.categorie)
+    return error(c, "Données de produit invalides", 400);
   const [product] = await db.insert(produits_menu).values(body).returning();
   eventEmitter.emit("invalidate", { entity: "restauration" });
   return success(c, product, "Produit ajouté", 201);
@@ -62,32 +68,94 @@ adminRestaurationRoutes.post("/menu", async (c) => {
 
 adminRestaurationRoutes.put("/menu/:id", async (c) => {
   const body = normalizeMenuBody(await parseMenuBody(c));
-  const [product] = await db.update(produits_menu).set(body).where(eq(produits_menu.id, Number(c.req.param("id")))).returning();
+  const [product] = await db
+    .update(produits_menu)
+    .set(body)
+    .where(eq(produits_menu.id, Number(c.req.param("id"))))
+    .returning();
   if (product) eventEmitter.emit("invalidate", { entity: "restauration" });
-  return product ? success(c, product, "Produit mis à jour") : error(c, "Produit introuvable", 404);
+  return product
+    ? success(c, product, "Produit mis à jour")
+    : error(c, "Produit introuvable", 404);
 });
 
 adminRestaurationRoutes.delete("/menu/:id", async (c) => {
-  const [product] = await db.update(produits_menu).set({ archived: true, updated_at: new Date() }).where(eq(produits_menu.id, Number(c.req.param("id")))).returning();
+  const [product] = await db
+    .update(produits_menu)
+    .set({ archived: true, updated_at: new Date() })
+    .where(eq(produits_menu.id, Number(c.req.param("id"))))
+    .returning();
   if (product) eventEmitter.emit("invalidate", { entity: "restauration" });
-  return product ? success(c, product, "Produit supprimé") : error(c, "Produit introuvable", 404);
+  return product
+    ? success(c, product, "Produit supprimé")
+    : error(c, "Produit introuvable", 404);
 });
 
 adminRestaurationRoutes.get("/commandes", async (c) => {
-  const orders = await db.select().from(commandes).orderBy(desc(commandes.created_at));
-  return success(c, orders);
+  const orders = await db
+    .select()
+    .from(commandes)
+    .orderBy(desc(commandes.created_at));
+  if (orders.length === 0) return success(c, []);
+
+  const orderIds = orders.map((o) => o.id);
+
+  // Jointure lignes_commandes -> produits_menu pour récupérer l'image de
+  // chaque article commandé. leftJoin car produit_id est nullable
+  // (produit supprimé du menu depuis la commande) — dans ce cas image_url
+  // vaut simplement null et le frontend affiche déjà un fallback.
+  const lignes = await db
+    .select({
+      commande_id: lignes_commandes.commande_id,
+      nom_produit: lignes_commandes.nom_produit,
+      quantite: lignes_commandes.quantite,
+      image_url: produits_menu.image_url,
+    })
+    .from(lignes_commandes)
+    .leftJoin(produits_menu, eq(lignes_commandes.produit_id, produits_menu.id))
+    .where(inArray(lignes_commandes.commande_id, orderIds));
+
+  const lignesParCommande = new Map<number, typeof lignes>();
+  for (const ligne of lignes) {
+    const liste = lignesParCommande.get(ligne.commande_id) ?? [];
+    liste.push(ligne);
+    lignesParCommande.set(ligne.commande_id, liste);
+  }
+
+  const ordersWithItems = orders.map((order) => ({
+    ...order,
+    items: (lignesParCommande.get(order.id) ?? []).map((l) => ({
+      nom: l.nom_produit,
+      quantite: l.quantite,
+      image_url: l.image_url ?? undefined,
+    })),
+  }));
+
+  return success(c, ordersWithItems);
 });
 
 adminRestaurationRoutes.put("/commandes/:id/statut", async (c) => {
   const { statut } = await c.req.json();
-  const [order] = await db.update(commandes).set({ statut, updated_at: new Date() }).where(eq(commandes.id, Number(c.req.param("id")))).returning();
-  return order ? success(c, order, "Statut mis à jour") : error(c, "Commande introuvable", 404);
+  const [order] = await db
+    .update(commandes)
+    .set({ statut, updated_at: new Date() })
+    .where(eq(commandes.id, Number(c.req.param("id"))))
+    .returning();
+  return order
+    ? success(c, order, "Statut mis à jour")
+    : error(c, "Commande introuvable", 404);
 });
 
 adminRestaurationRoutes.put("/commandes/:id/paiement", async (c) => {
   const { statut_paiement } = await c.req.json();
-  const [order] = await db.update(commandes).set({ statut_paiement, updated_at: new Date() }).where(eq(commandes.id, Number(c.req.param("id")))).returning();
-  return order ? success(c, order, "Paiement mis à jour") : error(c, "Commande introuvable", 404);
+  const [order] = await db
+    .update(commandes)
+    .set({ statut_paiement, updated_at: new Date() })
+    .where(eq(commandes.id, Number(c.req.param("id"))))
+    .returning();
+  return order
+    ? success(c, order, "Paiement mis à jour")
+    : error(c, "Commande introuvable", 404);
 });
 
 // ─── Types Djomy ─────────────────────────────────────────────────────────────
@@ -687,10 +755,7 @@ restaurationRoutes.post("/djomy-webhook", async (c) => {
     const { transactionId, status, merchantPaymentReference } = body;
 
     if (!transactionId || !status || !merchantPaymentReference) {
-      console.warn(
-        "Djomy webhook: Missing required fields",
-        body,
-      );
+      console.warn("Djomy webhook: Missing required fields", body);
       return error(c, "Missing required fields", 400);
     }
 

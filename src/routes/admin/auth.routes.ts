@@ -19,21 +19,29 @@ const error = (c: any, message = "Erreur", status = 400) => {
 // ─── 1. Dashboard Router ────────────────────────────────────────────────────
 export const adminDashboard = new Hono();
 
+async function safeCount(table: any, label: string) {
+  try {
+    const [row] = await db.select({ value: count() }).from(table);
+    return Number(row?.value ?? 0);
+  } catch (error) {
+    console.error(`[dashboard-stats] Impossible de compter ${label}:`, error);
+    return 0;
+  }
+}
+
 adminDashboard.get("/", async (c) => {
-  const [demandesCount] = await db
-    .select({ value: count() })
-    .from(demandes_contact);
-  const [filialesCount] = await db.select({ value: count() }).from(filiales);
-  const [galerieCount] = await db.select({ value: count() }).from(galerie);
-  const [cataloguesCount] = await db
-    .select({ value: count() })
-    .from(catalogues);
+  const [demandes, filialesCount, galerieCount, cataloguesCount] = await Promise.all([
+    safeCount(demandes_contact, "demandes_contact"),
+    safeCount(filiales, "filiales"),
+    safeCount(galerie, "galerie"),
+    safeCount(catalogues, "catalogues"),
+  ]);
 
   return success(c, {
-    demandes: demandesCount.value,
-    filiales: filialesCount.value,
-    galerie: galerieCount.value,
-    catalogues: cataloguesCount.value,
+    demandes: demandes,
+    filiales: filialesCount,
+    galerie: galerieCount,
+    catalogues: cataloguesCount,
   });
 });
 
@@ -75,7 +83,21 @@ adminFiliales.get("/", async (c) => {
 });
 
 adminFiliales.post("/", async (c) => {
-  const body = await c.req.json();
+  const contentType = c.req.header("content-type") || "";
+  let body: any;
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.parseBody();
+    const image = form.image instanceof File ? form.image : undefined;
+    body = Object.fromEntries(Object.entries(form).filter(([key]) => key !== "image"));
+
+    if (image) {
+      body.image_url = await uploadFile(image, "filiales");
+    }
+  } else {
+    body = await c.req.json();
+  }
+
   const created = await db.insert(filiales).values(body).returning();
   eventEmitter.emit("invalidate", { entity: "filiales" });
   return success(c, created[0], "Filiale creee", 201);
@@ -83,14 +105,41 @@ adminFiliales.post("/", async (c) => {
 
 adminFiliales.put("/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  const body = await c.req.json();
+  const contentType = c.req.header("content-type") || "";
+  let body: any;
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.parseBody();
+    const image = form.image instanceof File ? form.image : undefined;
+    body = Object.fromEntries(Object.entries(form).filter(([key]) => key !== "image"));
+
+    if (image) {
+      body.image_url = await uploadFile(image, "filiales");
+    }
+  } else {
+    body = await c.req.json();
+  }
+
+  const [existing] = await db
+    .select()
+    .from(filiales)
+    .where(eq(filiales.id, id))
+    .limit(1);
+
+  if (!existing) return error(c, "Filiale introuvable", 404);
+
+  const updatePayload = {
+    ...body,
+    updated_at: new Date(),
+  };
+
+  if (body.image_url === undefined && existing.image_url) {
+    updatePayload.image_url = existing.image_url;
+  }
 
   const updated = await db
     .update(filiales)
-    .set({
-      ...body,
-      updated_at: new Date(),
-    })
+    .set(updatePayload)
     .where(eq(filiales.id, id))
     .returning();
 
