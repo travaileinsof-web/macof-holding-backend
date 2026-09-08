@@ -19,7 +19,7 @@ async function seed() {
     .values({
       nom: "Admin MACOF",
       email: "admin@macof-holding.com",
-      password_hash: hashedPassword,
+      password_hash: hashedPassword, 
       role: "admin",
     })
     .onConflictDoNothing();
