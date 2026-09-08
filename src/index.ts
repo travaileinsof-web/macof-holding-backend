@@ -13,6 +13,7 @@ import settingsRoutes from './routes/settings.routes';
 import { eventsRoutes } from './routes/events.routes';
 import adminRoutes from './routes/admin/auth.routes';
 import restaurationRoutes, { adminRestaurationRoutes } from './routes/restauration.routes';
+import { adminChatbotRoutes } from './routes/admin/chatbot.routes';
 
 const app = new Hono();
 
@@ -49,10 +50,15 @@ app.route('/api/v1/settings', settingsRoutes);
 app.route('/api/v1/events', eventsRoutes);
 app.route('/api/v1/restauration', restaurationRoutes);
 
+
 // ─── Admin Routes (v1) ──────────────────────────────────────────────────────
 
 app.route('/api/v1/admin', adminRoutes);
 app.route('/api/v1/admin/restauration', adminRestaurationRoutes);
+
+// Montage des routes d'administration du Chatbot Vocale
+app.route('/api/v1/admin/chatbot', adminChatbotRoutes);
+app.route('/api/admin/chatbot', adminChatbotRoutes);
 
 // ─── 404 Handler ──────────────────────────────────────────────────────────
 
