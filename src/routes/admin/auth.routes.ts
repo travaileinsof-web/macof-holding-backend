@@ -185,6 +185,37 @@ adminGalerie.post("/", async (c) => {
   return success(c, item[0], "Image ajoutee", 201);
 });
 
+adminGalerie.put("/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return error(c, "ID invalide", 400);
+
+  const contentType = c.req.header("content-type") || "";
+  let body: any;
+  let image: File | undefined;
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.parseBody();
+    body = Object.fromEntries(Object.entries(form).filter(([key]) => key !== "image"));
+    image = form.image instanceof File ? form.image : undefined;
+    if (image) body.image_path = await uploadFile(image, "galerie");
+  } else {
+    body = await c.req.json();
+  }
+
+  if (body.filiale !== undefined && body.filiale !== "") body.filiale = Number(body.filiale);
+  else delete body.filiale;
+
+  const [updated] = await db
+    .update(galerie)
+    .set({ ...body, updated_at: new Date() })
+    .where(eq(galerie.id, id))
+    .returning();
+
+  if (!updated) return error(c, "Element de galerie introuvable", 404);
+  eventEmitter.emit("invalidate", { entity: "galerie" });
+  return success(c, updated, "Realisation mise a jour");
+});
+
 adminGalerie.delete("/:id", async (c) => {
   const id = Number(c.req.param("id"));
 
@@ -400,8 +431,15 @@ adminSettings.put("/:key", async (c) => {
 // ─── 8. Profile Administrateur Router ───────────────────────────────────────
 export const adminProfile = new Hono();
 
+function getAuthenticatedAdminId(c: any): number | null {
+  const user = c.get("user") || c.get("jwtPayload");
+  const rawId = user?.sub ?? user?.id;
+  const id = Number(rawId);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 adminProfile.get("/", async (c) => {
-  const userId = (c as any).get("jwtPayload")?.id;
+  const userId = getAuthenticatedAdminId(c);
   if (!userId) return error(c, "Non autorise", 401);
 
   const [user] = await db
@@ -409,6 +447,7 @@ adminProfile.get("/", async (c) => {
       id: administrateurs.id,
       nom: administrateurs.nom,
       email: administrateurs.email,
+      avatar_url: administrateurs.avatar_url,
       role: administrateurs.role,
       filiale_attribuee: administrateurs.filiale_attribuee,
       created_at: administrateurs.created_at,
@@ -421,7 +460,7 @@ adminProfile.get("/", async (c) => {
 });
 
 adminProfile.put("/", async (c) => {
-  const userId = (c as any).get("jwtPayload")?.id;
+  const userId = getAuthenticatedAdminId(c);
   if (!userId) return error(c, "Non autorise", 401);
 
   const body = await c.req.json();
@@ -429,12 +468,15 @@ adminProfile.put("/", async (c) => {
   // On empeche la modification directe du password_hash ici
   delete body.password_hash;
 
+  const updatePayload = {
+    avatar_url: body.avatar_url === undefined ? undefined : String(body.avatar_url || ""),
+    nom: body.nom === undefined ? undefined : String(body.nom || "").trim(),
+    updated_at: new Date(),
+  };
+
   const [updated] = await db
     .update(administrateurs)
-    .set({
-      ...body,
-      updated_at: new Date(),
-    })
+    .set(updatePayload)
     .where(eq(administrateurs.id, userId))
     .returning();
 

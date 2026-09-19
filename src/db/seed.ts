@@ -123,6 +123,56 @@ async function seed() {
       });
   }
 
+  const seededFiliales = await db
+    .select({ id: filiales.id, slug: filiales.slug })
+    .from(filiales);
+  const filialeIds = new Map(seededFiliales.map((filiale) => [filiale.slug, filiale.id]));
+
+  await db.insert(galerie).values([
+    {
+      titre: "Projets Résidentiels",
+      filiale: filialeIds.get("immobilier") ?? null,
+      type_projet: "residentiel",
+      description_courte: "Projets immobiliers et résidentiels structurants.",
+      image_path: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?q=80&w=1000&auto=format&fit=crop",
+    },
+    {
+      titre: "Gastronomie Premium",
+      filiale: filialeIds.get("restauration") ?? null,
+      type_projet: "evenement",
+      description_courte: "Prestations gastronomiques et traiteur premium.",
+      image_path: "https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?q=80&w=1000&auto=format&fit=crop",
+    },
+    {
+      titre: "Exploitation Minière",
+      filiale: filialeIds.get("mining") ?? null,
+      type_projet: "production",
+      description_courte: "Exploitation responsable de carrières et ressources minières.",
+      image_path: "https://image.pollinations.ai/prompt/mining%20quarry%20industrial%20heavy%20machinery?width=2000&height=1200&nologo=true",
+    },
+    {
+      titre: "Communication Visuelle",
+      filiale: filialeIds.get("print") ?? null,
+      type_projet: "evenement",
+      description_courte: "Création visuelle, impression et communication événementielle.",
+      image_path: "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?q=80&w=1000&auto=format&fit=crop",
+    },
+    {
+      titre: "Transport Fret",
+      filiale: filialeIds.get("transit") ?? null,
+      type_projet: "logistique",
+      description_courte: "Transport international et opérations logistiques.",
+      image_path: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=1000&auto=format&fit=crop",
+    },
+    {
+      titre: "Ressources Marines",
+      filiale: filialeIds.get("fishing") ?? null,
+      type_projet: "production",
+      description_courte: "Valorisation durable des ressources marines.",
+      image_path: "https://image.pollinations.ai/prompt/large%20industrial%20fishing%20vessel%20in%20ocean%20nets?width=2000&height=1200&nologo=true",
+    },
+  ]);
+
   // 4. Page Contents
   console.log("📄 Insertion des contenus de pages (page_contents)...");
 
@@ -177,49 +227,6 @@ async function seed() {
     },
     {
       page_slug: "home",
-      section_key: "realisations",
-      content_value: JSON.stringify([
-        {
-          title: "Projets Résidentiels",
-          category: "Immobilier",
-          image:
-            "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?q=80&w=1000&auto=format&fit=crop",
-        },
-        {
-          title: "Gastronomie Premium",
-          category: "Restauration",
-          image:
-            "https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?q=80&w=1000&auto=format&fit=crop",
-        },
-        {
-          title: "Exploitation Minière",
-          category: "Mining",
-          image:
-            "https://image.pollinations.ai/prompt/mining%20quarry%20industrial%20heavy%20machinery?width=2000&height=1200&nologo=true",
-        },
-        {
-          title: "Communication Visuelle",
-          category: "Print & Com",
-          image:
-            "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?q=80&w=1000&auto=format&fit=crop",
-        },
-        {
-          title: "Transport Fret",
-          category: "Transit",
-          image:
-            "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=1000&auto=format&fit=crop",
-        },
-        {
-          title: "Ressources Marines",
-          category: "Fishing",
-          image:
-            "https://image.pollinations.ai/prompt/large%20industrial%20fishing%20vessel%20in%20ocean%20nets?width=2000&height=1200&nologo=true",
-        },
-      ]),
-      content_type: "json",
-    },
-    {
-      page_slug: "home",
       section_key: "actualites",
       content_value: JSON.stringify([
         {
@@ -267,7 +274,7 @@ async function seed() {
       page_slug: "about",
       section_key: "hero_img",
       content_value:
-        "https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=1000&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1522071820081-009f0129c71c?q=80&w=1000&auto=format&fit=crop",
       content_type: "text",
     },
     {

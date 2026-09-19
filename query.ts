@@ -1,6 +1,7 @@
+import 'dotenv/config';
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon('postgresql://neondb_owner:npg_HVqK5hjQn7uF@ep-rough-bird-ayomyi9a-pooler.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require');
+const sql = neon(process.env.DATABASE_URL!);
 
 async function main() {
   const pages = await sql`SELECT section_key, content_value FROM page_contents WHERE page_slug = 'home' AND section_key IN ('temoignages', 'realisations')`;

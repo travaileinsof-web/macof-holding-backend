@@ -28,18 +28,13 @@ pagesRoutes.get("/:slug", async (c) => {
       .from(page_contents)
       .where(eq(page_contents.page_slug, slug));
 
-    // Transformer le tableau plat en structure { slug, sections: [...] }
-    const sections = contents.map((row) => ({
-      key: row.section_key,
-      type: row.content_type || "text",
-      value: row.content_value || "",
-      image_url: row.content_type === "image" ? row.content_value : undefined,
-    }));
-
-    return success(c, {
-      slug,
-      sections,
+    // Transformer le tableau plat en un objet clé-valeur pour correspondre aux attentes du frontend
+    const flatData: Record<string, string> = {};
+    contents.forEach((row) => {
+      flatData[row.section_key] = row.content_value || "";
     });
+
+    return success(c, flatData);
   } catch (err) {
     console.error(`Erreur chargement page ${slug}:`, err);
     return error(c, "Erreur lors de la récupération de la page", 500);

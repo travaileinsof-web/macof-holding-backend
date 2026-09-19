@@ -115,6 +115,7 @@ export const administrateurs = pgTable("administrateurs", {
   id: serial("id").primaryKey(),
   nom: varchar("nom", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull().unique(),
+  avatar_url: text("avatar_url"),
   password_hash: varchar("password_hash", { length: 255 }).notNull(),
   role: adminRoleEnum("role").default("admin").notNull(),
   filiale_attribuee: integer("filiale_attribuee").references(() => filiales.id), // ✅ Ajout de la contrainte FK
@@ -267,6 +268,7 @@ export const produits_menu = pgTable(
     categorie: produitCategorieEnum("categorie").notNull(),
     prix_gnf: integer("prix_gnf").notNull(),
     image_url: text("image_url"),
+    video_url: text("video_url"),
     disponible: boolean("disponible").default(true).notNull(),
     archived: boolean("archived").default(false).notNull(),
     created_at: timestamp("created_at", { withTimezone: true })

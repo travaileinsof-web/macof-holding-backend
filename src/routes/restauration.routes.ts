@@ -53,7 +53,7 @@ function normalizeMenuBody(body: any) {
     disponible: body.disponible === true || body.disponible === "true",
     updated_at: new Date(),
   };
-  if (body.image_url) normalized.image_url = String(body.image_url);
+  if (body.image_url) normalized.image_url = String(body.image_url); if (body.video_url !== undefined) normalized.video_url = body.video_url ? String(body.video_url) : null;
   return normalized;
 }
 
@@ -109,7 +109,7 @@ adminRestaurationRoutes.get("/commandes", async (c) => {
       commande_id: lignes_commandes.commande_id,
       nom_produit: lignes_commandes.nom_produit,
       quantite: lignes_commandes.quantite,
-      image_url: produits_menu.image_url,
+      image_url: produits_menu.image_url, video_url: produits_menu.video_url,
     })
     .from(lignes_commandes)
     .leftJoin(produits_menu, eq(lignes_commandes.produit_id, produits_menu.id))
@@ -156,6 +156,13 @@ adminRestaurationRoutes.put("/commandes/:id/paiement", async (c) => {
   return order
     ? success(c, order, "Paiement mis à jour")
     : error(c, "Commande introuvable", 404);
+});
+
+adminRestaurationRoutes.delete("/commandes/:id", async (c) => {
+  const orderId = Number(c.req.param("id"));
+  await db.delete(lignes_commandes).where(eq(lignes_commandes.commande_id, orderId));
+  const [order] = await db.delete(commandes).where(eq(commandes.id, orderId)).returning();
+  return order ? success(c, order, "Commande supprimée") : error(c, "Commande introuvable", 404);
 });
 
 // ─── Types Djomy ─────────────────────────────────────────────────────────────
@@ -410,8 +417,9 @@ restaurationRoutes.get("/menu", async (c) => {
         id: produits_menu.id,
         nom: produits_menu.nom,
         description: produits_menu.description,
+        categorie: produits_menu.categorie,
         prix_gnf: produits_menu.prix_gnf,
-        image_url: produits_menu.image_url,
+        image_url: produits_menu.image_url, video_url: produits_menu.video_url,
         disponible: produits_menu.disponible,
         archived: produits_menu.archived,
       })
@@ -440,8 +448,9 @@ restaurationRoutes.get("/menu/:id", async (c) => {
         id: produits_menu.id,
         nom: produits_menu.nom,
         description: produits_menu.description,
+        categorie: produits_menu.categorie,
         prix_gnf: produits_menu.prix_gnf,
-        image_url: produits_menu.image_url,
+        image_url: produits_menu.image_url, video_url: produits_menu.video_url,
         disponible: produits_menu.disponible,
         archived: produits_menu.archived,
       })
@@ -810,3 +819,5 @@ restaurationRoutes.post("/djomy-webhook", async (c) => {
 });
 
 export default restaurationRoutes;
+
+

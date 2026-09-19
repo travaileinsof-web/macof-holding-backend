@@ -71,6 +71,7 @@ authRoutes.post("/login", async (c) => {
         id: admin.id,
         nom: admin.nom,
         email: admin.email,
+        avatar_url: admin.avatar_url,
         role: admin.role,
         filiale_attribuee: admin.filiale_attribuee,
       },
@@ -104,6 +105,7 @@ authRoutes.get("/me", async (c) => {
       nom: administrateurs.nom,
       email: administrateurs.email,
       role: administrateurs.role,
+      avatar_url: administrateurs.avatar_url,
       filiale_attribuee: administrateurs.filiale_attribuee,
       archived: administrateurs.archived,
     })
